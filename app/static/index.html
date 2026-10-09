@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>动画任务控制台</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#mainContent">跳到任务详情</a>
+
+  <header class="app-header">
+    <div>
+      <p class="product-kicker">Observable Pipeline</p>
+      <h1>动画任务控制台</h1>
+    </div>
+    <div class="header-status" aria-live="polite">
+      <span id="connectionDot" class="connection-dot" aria-hidden="true"></span>
+      <span id="connectionMode">正在连接 API</span>
+    </div>
+  </header>
+
+  <div id="devModeBanner" class="dev-banner" role="status" hidden>
+    <strong>开发模式</strong>
+    <span>后端暂不可用，当前展示内置 Mock 数据；操作不会写入数据库。</span>
+    <button id="retryConnectionButton" class="text-button" type="button">重新连接</button>
+  </div>
+
+  <div id="globalMessage" class="global-message" role="status" aria-live="polite" hidden></div>
+
+  <div id="appShell" class="app-shell">
+    <aside class="task-sidebar" aria-label="任务导航">
+      <details class="create-panel" open>
+        <summary>创建任务</summary>
+        <form id="newTaskForm" class="task-form">
+          <label for="taskFile">动画视频</label>
+          <input id="taskFile" name="file" type="file" accept=".mp4,.mov,video/mp4,video/quicktime" required>
+          <p class="field-hint">MP4 或 MOV，最大 50 MB、20 秒。</p>
+
+          <div class="form-grid">
+            <div>
+              <label for="frameCount">关键帧数</label>
+              <input id="frameCount" name="frame_count" type="number" min="4" max="12" value="8" required>
+            </div>
+            <div>
+              <label for="analysisProfile">分析配置</label>
+              <select id="analysisProfile" name="analysis_profile">
+                <option value="default">默认</option>
+                <option value="fast">快速</option>
+                <option value="detailed">详细</option>
+              </select>
+            </div>
+          </div>
+
+          <label for="faultPlan">故障注入</label>
+          <select id="faultPlan" name="fault_plan">
+            <option value="none">正常运行</option>
+            <option value="analyze_fail_once_at_50">AI 分析 50% 时失败一次</option>
+            <option value="analyze_timeout_once">AI 分析首次执行超时</option>
+            <option value="contact_sheet_permanent_fail">预览图步骤永久失败</option>
+            <option value="worker_exit_at_40">AI 分析 40% 时终止 Worker</option>
+          </select>
+
+          <button id="createTaskButton" class="primary-button" type="submit">创建并运行</button>
+          <p id="formMessage" class="form-message" role="status" aria-live="polite"></p>
+        </form>
+      </details>
+
+      <div class="task-list-heading">
+        <div>
+          <h2>任务</h2>
+          <span id="taskCount" class="count-label">0 项</span>
+        </div>
+        <button id="refreshTasksButton" class="compact-button" type="button" aria-label="刷新任务列表" title="刷新任务列表">刷新</button>
+      </div>
+
+      <nav id="taskList" class="task-list" aria-label="任务列表"></nav>
+      <p id="taskListEmpty" class="empty-copy" hidden>还没有任务。先上传一段短视频。</p>
+    </aside>
+
+    <main id="mainContent" class="main-content">
+      <section id="noTaskState" class="empty-state" aria-labelledby="emptyTitle">
+        <p class="section-label">任务详情</p>
+        <h2 id="emptyTitle">选择一个任务查看执行过程</h2>
+        <p>这里会显示五步时间线、执行尝试、日志、错误与产物。</p>
+      </section>
+
+      <div id="taskDetail" hidden>
+        <section class="task-overview" aria-labelledby="taskTitle">
+          <div class="overview-heading">
+            <div>
+              <p id="taskId" class="mono muted"></p>
+              <h2 id="taskTitle">任务详情</h2>
+            </div>
+            <span id="taskStatus" class="status-badge" data-status="PENDING">等待中</span>
+          </div>
+
+          <div class="progress-block">
+            <div class="progress-labels">
+              <span>总体进度</span>
+              <strong id="taskProgressValue">0%</strong>
+            </div>
+            <div class="progress-track" role="progressbar" aria-label="任务总体进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <span id="taskProgressBar" class="progress-fill"></span>
+            </div>
+          </div>
+
+          <dl class="task-facts">
+            <div><dt>创建时间</dt><dd id="taskCreatedAt">-</dd></div>
+            <div><dt>更新时间</dt><dd id="taskUpdatedAt">-</dd></div>
+            <div><dt>当前步骤</dt><dd id="taskCurrentStep">-</dd></div>
+            <div><dt>输入参数</dt><dd id="taskParams">-</dd></div>
+          </dl>
+
+          <div class="task-actions" aria-label="任务操作">
+            <button id="rerunTaskButton" class="secondary-button" type="button">重新运行</button>
+            <button id="rerunNoCacheButton" class="danger-button" type="button">忽略缓存重跑</button>
+          </div>
+        </section>
+
+        <section class="workspace-section" aria-labelledby="pipelineHeading">
+          <div class="section-heading">
+            <div>
+              <p class="section-label">Pipeline</p>
+              <h2 id="pipelineHeading">五步执行时间线</h2>
+            </div>
+            <p id="pollingState" class="polling-state" aria-live="polite">已停止轮询</p>
+          </div>
+          <ol id="stepTimeline" class="step-timeline"></ol>
+        </section>
+
+        <section id="stepInspector" class="workspace-section" aria-labelledby="stepInspectorTitle">
+          <div class="section-heading step-heading">
+            <div>
+              <p id="selectedStepKey" class="section-label mono">-</p>
+              <h2 id="stepInspectorTitle">步骤详情</h2>
+            </div>
+            <button id="retryStepButton" class="primary-button" type="button" disabled>重试失败步骤</button>
+          </div>
+
+          <dl class="step-facts">
+            <div><dt>状态</dt><dd id="selectedStepStatus">-</dd></div>
+            <div><dt>进度</dt><dd id="selectedStepProgress">-</dd></div>
+            <div><dt>执行次数</dt><dd id="selectedStepAttempts">-</dd></div>
+            <div><dt>最后心跳</dt><dd id="selectedStepHeartbeat">-</dd></div>
+          </dl>
+
+          <div id="stepErrorPanel" class="error-panel" role="alert" aria-live="polite" hidden>
+            <strong id="stepErrorType">步骤执行失败</strong>
+            <p id="stepErrorMessage"></p>
+          </div>
+
+          <div class="data-region">
+            <h3>执行尝试</h3>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">次数</th>
+                    <th scope="col">状态</th>
+                    <th scope="col">Worker</th>
+                    <th scope="col">开始时间</th>
+                    <th scope="col">耗时</th>
+                  </tr>
+                </thead>
+                <tbody id="attemptTableBody"></tbody>
+              </table>
+            </div>
+            <p id="attemptEmpty" class="empty-copy" hidden>该步骤尚未开始执行。</p>
+          </div>
+
+          <div class="data-region">
+            <div class="region-heading">
+              <h3>日志与事件</h3>
+              <span id="eventSequence" class="mono muted">sequence: -</span>
+            </div>
+            <pre id="logOutput" class="log-output" tabindex="0">暂无日志。</pre>
+          </div>
+        </section>
+
+        <section class="workspace-section" aria-labelledby="artifactHeading">
+          <div class="section-heading">
+            <div>
+              <p class="section-label">Artifacts</p>
+              <h2 id="artifactHeading">任务产物</h2>
+            </div>
+            <span id="artifactCount" class="count-label">0 项</span>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">产物</th>
+                  <th scope="col">来源步骤</th>
+                  <th scope="col">大小</th>
+                  <th scope="col">校验值</th>
+                  <th scope="col"><span class="visually-hidden">操作</span></th>
+                </tr>
+              </thead>
+              <tbody id="artifactTableBody"></tbody>
+            </table>
+          </div>
+          <p id="artifactEmpty" class="empty-copy">暂未生成产物。</p>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="confirmDialog" class="confirm-dialog">
+    <form method="dialog">
+      <h2 id="confirmDialogTitle">确认操作</h2>
+      <p id="confirmDialogMessage"></p>
+      <div class="dialog-actions">
+        <button value="cancel" class="secondary-button">取消</button>
+        <button id="confirmDialogAction" value="confirm" class="danger-button">确认</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>

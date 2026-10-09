@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "observable-animation-pipeline"
+version = "0.1.0"
+description = "Observable and recoverable animation processing pipeline MVP"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.116,<0.117",
+  "uvicorn>=0.35,<1",
+  "sqlalchemy>=2.0,<3",
+  "pydantic>=2.11,<3",
+  "python-multipart>=0.0.20,<1",
+  "opencv-python>=4.10,<5",
+  "pillow>=11,<13",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx>=0.28,<1",
+    "pytest>=8.3,<10",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+  "integration: tests that use the database or filesystem",
+]
